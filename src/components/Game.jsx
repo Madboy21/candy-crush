@@ -1,78 +1,141 @@
-import { useEffect, useRef, useState } from 'react';
-import Phaser from 'phaser';
-import { startGame, submitScore } from '../lib/api';
+import { useEffect, useRef, useState } from "react";
+import Phaser from "phaser";
+import { startGame, submitScore } from "../lib/api.js";
 
 const GRID = 8;
 const TYPES = 6;
 const TILE = 56;
 const SCORE_PER_TILE = 10;
-const DURATION = 120;
+const DURATION = 120; // seconds
 
 export default function Game({ onPlayingChange }) {
   const containerRef = useRef(null);
   const phaserRef = useRef(null);
+  const timerRef = useRef(null);
+  const tokenRef = useRef(null);
+
   const [timeLeft, setTimeLeft] = useState(0);
   const [score, setScore] = useState(0);
-  const tokenRef = useRef(null);
-  const timerRef = useRef(null);
+  const [starting, setStarting] = useState(false);
+  const [playing, setPlaying] = useState(false);
 
   async function begin() {
+    if (starting || playing) return;
+    setStarting(true);
     setScore(0);
-    const { ok, token } = await startGame();
-    if (!ok) return alert('Start failed');
-    tokenRef.current = token;
-    setTimeLeft(DURATION);
-    onPlayingChange(true);
-
     clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => {
-      setTimeLeft((t) => {
-        if (t <= 1) { clearInterval(timerRef.current); endGame(); return 0; }
-        return t - 1;
-      });
-    }, 1000);
 
-    if (phaserRef.current) {
-      phaserRef.current.scene.keys.Match3Scene.resetBoard();
-      return;
+    try {
+      const data = await startGame();
+      // বিভিন্ন রেসপন্স ফরম্যাট সেফলি ধরার জন্য
+      const ok = data?.ok ?? data?.success ?? !!data?.token;
+      const token = data?.token;
+
+      if (!ok || !token) {
+        alert(data?.error || "Start failed");
+        setStarting(false);
+        return;
+      }
+
+      tokenRef.current = token;
+      setTimeLeft(DURATION);
+      setPlaying(true);
+      onPlayingChange?.(true);
+
+      // টাইমার
+      timerRef.current = setInterval(() => {
+        setTimeLeft((t) => {
+          if (t <= 1) {
+            clearInterval(timerRef.current);
+            // শেষ হয়ে গেলে সাবমিট
+            endGame();
+            return 0;
+          }
+          return t - 1;
+        });
+      }, 1000);
+
+      // Phaser init / reuse
+      if (phaserRef.current) {
+        // পুরনো ইনস্ট্যান্স থাকলে শুধু রিসেট
+        const scene = phaserRef.current.scene.keys.Match3Scene;
+        scene?.resetBoard?.();
+      } else {
+        const config = {
+          type: Phaser.AUTO,
+          parent: containerRef.current,
+          width: GRID * TILE,
+          height: GRID * TILE,
+          backgroundColor: "#0f172a",
+          scene: [makeScene(setScore)],
+          scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+        };
+        phaserRef.current = new Phaser.Game(config);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Game start error");
+    } finally {
+      setStarting(false);
     }
-
-    const config = {
-      type: Phaser.AUTO,
-      parent: containerRef.current,
-      width: GRID * TILE,
-      height: GRID * TILE,
-      backgroundColor: '#0f172a',
-      scene: [makeScene(setScore)],
-      scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }
-    };
-
-    phaserRef.current = new Phaser.Game(config);
   }
 
   async function endGame() {
-    onPlayingChange(false);
+    if (!playing) return;
+    setPlaying(false);
+    onPlayingChange?.(false);
+    clearInterval(timerRef.current);
+
     try {
       const token = tokenRef.current;
-      if (!token) return;
+      tokenRef.current = null;
+      if (!token) return; // শুরুই হয়নি
+
       await submitScore(token, score);
-    } catch (e) { console.error(e); }
+      // চাইলে এখানে “Score submitted!” টোস্ট দেখাতে পারো
+    } catch (e) {
+      console.error(e);
+      // ব্যর্থ হলেও গেম রিসেট হবে
+    }
   }
 
-  useEffect(() => () => {
-    clearInterval(timerRef.current);
-    if (phaserRef.current) phaserRef.current.destroy(true);
+  // Unmount cleanup
+  useEffect(() => {
+    return () => {
+      clearInterval(timerRef.current);
+      if (phaserRef.current) {
+        phaserRef.current.destroy(true);
+        phaserRef.current = null;
+      }
+    };
   }, []);
 
   return (
     <div className="card">
       <div className="flex items-center justify-between mb-3">
-        <div className="text-sm">Time Left: <span className="font-bold">{timeLeft}s</span></div>
-        <div className="text-sm">Score: <span className="font-bold">{score}</span></div>
+        <div className="text-sm">
+          Time Left: <span className="font-bold">{timeLeft}s</span>
+        </div>
+        <div className="text-sm">
+          Score: <span className="font-bold">{score}</span>
+        </div>
       </div>
-      <div ref={containerRef} className="rounded-2xl overflow-hidden border border-slate-700 w-[448px] h-[448px]"></div>
+
+      <div
+        ref={containerRef}
+        className="rounded-2xl overflow-hidden border border-slate-700 w-[448px] h-[448px]"
+      />
+
       <div className="mt-3 flex gap-2">
-        <button className="btn" onClick={begin}>Start 2‑min Round</button>
+        {!playing ? (
+          <button className="btn" onClick={begin} disabled={starting}>
+            {starting ? "Starting..." : "Start 2-min Round"}
+          </button>
+        ) : (
+          <button className="btn" onClick={endGame}>
+            End Round & Submit
+          </button>
+        )}
       </div>
     </div>
   );
@@ -81,7 +144,7 @@ export default function Game({ onPlayingChange }) {
 function makeScene(setScore) {
   return class Match3Scene extends Phaser.Scene {
     constructor() {
-      super('Match3Scene');
+      super("Match3Scene");
       this.board = [];
       this.sprites = [];
       this.selected = null;
@@ -89,7 +152,7 @@ function makeScene(setScore) {
     }
 
     preload() {
-      const colors = ['#ef4444', '#22c55e', '#3b82f6', '#eab308', '#a855f7', '#06b6d4'];
+      const colors = ["#ef4444", "#22c55e", "#3b82f6", "#eab308", "#a855f7", "#06b6d4"];
       colors.forEach((c, i) => {
         const g = this.make.graphics({ x: 0, y: 0, add: false });
         g.fillStyle(Phaser.Display.Color.HexStringToColor(c).color, 1);
@@ -100,8 +163,8 @@ function makeScene(setScore) {
     }
 
     create() {
-      this.input.on('pointerdown', this.onDown, this);
-      this.input.on('pointerup', this.onUp, this);
+      this.input.on("pointerdown", this.onDown, this);
+      this.input.on("pointerup", this.onUp, this);
       this.resetBoard();
     }
 
@@ -113,7 +176,9 @@ function makeScene(setScore) {
       for (let y = 0; y < GRID; y++) {
         for (let x = 0; x < GRID; x++) {
           let t;
-          do { t = Math.floor(Math.random() * TYPES); } while (this.causesMatch(x, y, t));
+          do {
+            t = Math.floor(Math.random() * TYPES);
+          } while (this.causesMatch(x, y, t));
           this.place(x, y, t);
         }
       }
@@ -134,14 +199,15 @@ function makeScene(setScore) {
     place(x, y, t) {
       this.board[y][x] = t;
       const { px, py } = this.gridToXY(x, y);
-      const s = this.add.image(px, py, `candy${t}`)
+      const s = this.add
+        .image(px, py, `candy${t}`)
         .setData({ x, y, t })
         .setInteractive({ useHandCursor: true });
       this.sprites.push(s);
     }
 
     spriteAt(x, y) {
-      return this.sprites.find((s) => s.getData('x') === x && s.getData('y') === y);
+      return this.sprites.find((s) => s.getData("x") === x && s.getData("y") === y);
     }
 
     onDown(pointer) {
@@ -170,10 +236,15 @@ function makeScene(setScore) {
       this.swapCells(x1, y1, x2, y2);
       const matched = this.hasMatches();
       if (matched) this.animateSwap(x1, y1, x2, y2, true);
-      else { this.swapCells(x1, y1, x2, y2); this.animateSwap(x1, y1, x2, y2, false); }
+      else {
+        this.swapCells(x1, y1, x2, y2);
+        this.animateSwap(x1, y1, x2, y2, false);
+      }
     }
 
-    inBounds(x, y) { return x >= 0 && y >= 0 && x < GRID && y < GRID; }
+    inBounds(x, y) {
+      return x >= 0 && y >= 0 && x < GRID && y < GRID;
+    }
 
     swapCells(x1, y1, x2, y2) {
       const t = this.board[y1][x1];
@@ -202,11 +273,14 @@ function makeScene(setScore) {
         onComplete: () => {
           if (good) this.findAndClearMatches();
           this.locked = false;
-        }
+        },
       });
     }
 
-    hasMatches() { return this.collectMatches().h.length > 0 || this.collectMatches().v.length > 0; }
+    hasMatches() {
+      const c = this.collectMatches();
+      return c.h.length > 0 || c.v.length > 0;
+    }
 
     collectMatches() {
       const matched = [];
@@ -214,7 +288,10 @@ function makeScene(setScore) {
         let run = 1;
         for (let x = 1; x < GRID; x++) {
           if (this.board[y][x] === this.board[y][x - 1]) run++;
-          else { if (run >= 3) matched.push({ y, x0: x - run, x1: x - 1 }); run = 1; }
+          else {
+            if (run >= 3) matched.push({ y, x0: x - run, x1: x - 1 });
+            run = 1;
+          }
         }
         if (run >= 3) matched.push({ y, x0: GRID - run, x1: GRID - 1 });
       }
@@ -224,7 +301,10 @@ function makeScene(setScore) {
         let run = 1;
         for (let y = 1; y < GRID; y++) {
           if (this.board[y][x] === this.board[y - 1][x]) run++;
-          else { if (run >= 3) vmatched.push({ x, y0: y - run, y1: y - 1 }); run = 1; }
+          else {
+            if (run >= 3) vmatched.push({ x, y0: y - run, y1: y - 1 });
+            run = 1;
+          }
         }
         if (run >= 3) vmatched.push({ x, y0: GRID - run, y1: GRID - 1 });
       }
@@ -236,19 +316,30 @@ function makeScene(setScore) {
       const m = this.collectMatches();
       const toClear = new Set();
 
-      m.h.forEach(({ y, x0, x1 }) => { for (let x = x0; x <= x1; x++) toClear.add(`${x},${y}`); });
-      m.v.forEach(({ x, y0, y1 }) => { for (let y = y0; y <= y1; y++) toClear.add(`${x},${y}`); });
+      m.h.forEach(({ y, x0, x1 }) => {
+        for (let x = x0; x <= x1; x++) toClear.add(`${x},${y}`);
+      });
+      m.v.forEach(({ x, y0, y1 }) => {
+        for (let y = y0; y <= y1; y++) toClear.add(`${x},${y}`);
+      });
 
       if (toClear.size === 0) return;
 
-      toClear.forEach(key => {
-        const [x, y] = key.split(',').map(Number);
+      toClear.forEach((key) => {
+        const [x, y] = key.split(",").map(Number);
         const s = this.spriteAt(x, y);
-        if (s) this.tweens.add({ targets: s, alpha: 0, duration: 100, onComplete: () => s.destroy() });
+        if (s)
+          this.tweens.add({
+            targets: s,
+            alpha: 0,
+            duration: 100,
+            onComplete: () => s.destroy(),
+          });
         this.board[y][x] = -1;
       });
 
-      setScore(prev => prev + SCORE_PER_TILE * toClear.size);
+      // স্কোর আপডেট
+      setScore((prev) => prev + SCORE_PER_TILE * toClear.size);
 
       this.time.delayedCall(120, () => {
         for (let x = 0; x < GRID; x++) {
@@ -259,7 +350,7 @@ function makeScene(setScore) {
                 this.board[writeY][x] = this.board[y][x];
                 const s = this.spriteAt(x, y);
                 if (s) {
-                  s.setData('y', writeY);
+                  s.setData("y", writeY);
                   const { px, py } = this.gridToXY(x, writeY);
                   this.tweens.add({ targets: s, x: px, y: py, duration: 120 });
                 }
@@ -271,7 +362,10 @@ function makeScene(setScore) {
             const t = Math.floor(Math.random() * TYPES);
             this.board[y][x] = t;
             const { px, py } = this.gridToXY(x, y);
-            const s = this.add.image(px, -56, `candy${t}`).setData({ x, y, t }).setInteractive({ useHandCursor: true });
+            const s = this.add
+              .image(px, -56, `candy${t}`)
+              .setData({ x, y, t })
+              .setInteractive({ useHandCursor: true });
             this.sprites.push(s);
             this.tweens.add({ targets: s, y: py, duration: 140 });
           }
