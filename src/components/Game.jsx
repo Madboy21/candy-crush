@@ -1,12 +1,20 @@
+'use client'; // For Next.js or Vite React strict mode
+
 import { useEffect, useRef, useState } from "react";
-import Phaser from "phaser";
+import dynamic from "next/dynamic";
+
+let Phaser = null;
+if (typeof window !== "undefined") {
+  Phaser = require("phaser");
+}
+
 import { startGame, submitScore } from "../lib/api.js";
 
 const GRID = 8;
 const TYPES = 6;
 const TILE = 56;
 const SCORE_PER_TILE = 10;
-const DURATION = 120; // seconds
+const DURATION = 120;
 
 export default function Game({ onPlayingChange }) {
   const containerRef = useRef(null);
@@ -26,18 +34,14 @@ export default function Game({ onPlayingChange }) {
     clearInterval(timerRef.current);
 
     try {
-      // ✅ Start game via API (will create session if needed)
       const data = await startGame();
-      const ok = data?.ok ?? false;
-      const token = data?.token;
-
-      if (!ok || !token) {
-        alert(data?.error || "Start failed");
+      if (!data.ok || !data.token) {
+        alert(data.error || "Start failed");
         setStarting(false);
         return;
       }
 
-      tokenRef.current = token;
+      tokenRef.current = data.token;
       setTimeLeft(DURATION);
       setPlaying(true);
       onPlayingChange?.(true);
@@ -54,11 +58,8 @@ export default function Game({ onPlayingChange }) {
         });
       }, 1000);
 
-      // Phaser init / reuse
-      if (phaserRef.current) {
-        const scene = phaserRef.current.scene.keys.Match3Scene;
-        scene?.resetBoard?.();
-      } else {
+      // Phaser init only in browser
+      if (!phaserRef.current && Phaser) {
         const config = {
           type: Phaser.AUTO,
           parent: containerRef.current,
@@ -69,6 +70,9 @@ export default function Game({ onPlayingChange }) {
           scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
         };
         phaserRef.current = new Phaser.Game(config);
+      } else if (phaserRef.current) {
+        const scene = phaserRef.current.scene.keys.Match3Scene;
+        scene?.resetBoard?.();
       }
     } catch (e) {
       console.error(e);
@@ -88,7 +92,6 @@ export default function Game({ onPlayingChange }) {
       const token = tokenRef.current;
       tokenRef.current = null;
       if (!token) return;
-
       await submitScore(token, score);
     } catch (e) {
       console.error(e);
@@ -130,7 +133,7 @@ export default function Game({ onPlayingChange }) {
   );
 }
 
-// --- Phaser scene (same as before) ---
+// --- Phaser scene (same logic as before, no SSR errors) ---
 function makeScene(setScore) {
   return class Match3Scene extends Phaser.Scene {
     constructor() {
