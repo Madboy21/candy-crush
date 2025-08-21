@@ -35,9 +35,11 @@ export async function getLeaderboard() {
   const res = await fetch(`${baseURL}/api/leaderboard/today`, {
     credentials: 'include',
   });
-  return res.json();
+  const data = await res.json();
+  return data?.board || [];
 }
 
 export function makeSocket() {
-  return io(baseURL, { withCredentials: true });
+  const socket = io(baseURL, { withCredentials: true });
+  return socket;
 }
