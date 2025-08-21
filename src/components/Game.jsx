@@ -1,4 +1,3 @@
-dhet ato soto vabe diso kn koto functin nai......
 import { useEffect, useRef, useState } from "react";
 import Phaser from "phaser";
 import { startGame, submitScore } from "../lib/api.js";
