@@ -6,17 +6,21 @@ export async function createSession(nickname) {
   const res = await fetch(`${baseURL}/api/session`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    credentials: 'include', // ✅ cookie support
+    credentials: 'include', // cookie support
     body: JSON.stringify({ nickname }),
   });
   return res.json();
 }
 
 export async function startGame() {
+  // ensure session exists
+  const session = await createSession("Guest");
+  if (!session.ok) throw new Error(session.error || "Session failed");
+
   const res = await fetch(`${baseURL}/api/game/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    credentials: 'include', // ✅ cookie support
+    credentials: 'include', // cookie support
   });
   return res.json();
 }
@@ -25,7 +29,7 @@ export async function submitScore(token, score) {
   const res = await fetch(`${baseURL}/api/game/submit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    credentials: 'include', // ✅ cookie support
+    credentials: 'include',
     body: JSON.stringify({ token, score }),
   });
   return res.json();
@@ -33,11 +37,11 @@ export async function submitScore(token, score) {
 
 export async function getLeaderboard() {
   const res = await fetch(`${baseURL}/api/leaderboard/today`, {
-    credentials: 'include', // ✅ cookie support
+    credentials: 'include',
   });
   return res.json();
 }
 
 export function makeSocket() {
-  return io(baseURL, { withCredentials: true }); // ✅ cookie + CORS
+  return io(baseURL, { withCredentials: true });
 }
