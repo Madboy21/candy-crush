@@ -7,7 +7,7 @@ export async function createSession(nickname) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ nickname })
+    body: JSON.stringify({ nickname }),
   });
   return res.json();
 }
@@ -16,7 +16,7 @@ export async function startGame() {
   const res = await fetch(`${baseURL}/api/game/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    credentials: 'include'
+    credentials: 'include',
   });
   return res.json();
 }
@@ -26,13 +26,15 @@ export async function submitScore(token, score) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
-    body: JSON.stringify({ token, score })
+    body: JSON.stringify({ token, score }),
   });
   return res.json();
 }
 
 export async function getLeaderboard() {
-  const res = await fetch(`${baseURL}/api/leaderboard/today`, { credentials: 'include' });
+  const res = await fetch(`${baseURL}/api/leaderboard/today`, {
+    credentials: 'include',
+  });
   return res.json();
 }
 
