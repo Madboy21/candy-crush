@@ -6,21 +6,17 @@ export async function createSession(nickname) {
   const res = await fetch(`${baseURL}/api/session`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    credentials: 'include', // cookie support
+    credentials: 'include',
     body: JSON.stringify({ nickname }),
   });
   return res.json();
 }
 
 export async function startGame() {
-  // ensure session exists
-  const session = await createSession("Guest");
-  if (!session.ok) throw new Error(session.error || "Session failed");
-
   const res = await fetch(`${baseURL}/api/game/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    credentials: 'include', // cookie support
+    credentials: 'include',
   });
   return res.json();
 }
