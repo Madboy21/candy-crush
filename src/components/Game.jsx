@@ -18,8 +18,8 @@ export default function Game({ onPlayingChange }) {
 
   async function begin() {
     setScore(0);
-    const { ok, token } = await startGame();
-    if (!ok) return alert('Start failed');
+    const { ok, token, error } = await startGame();
+    if (!ok) return alert(error || 'Start failed');
     tokenRef.current = token;
     setTimeLeft(DURATION);
     onPlayingChange(true);
@@ -107,9 +107,8 @@ function makeScene(setScore) {
 
     resetBoard() {
       this.board = Array.from({ length: GRID }, () => Array(GRID).fill(0));
-      this.sprites.forEach((s) => s.destroy());
+      this.sprites.forEach(s => s.destroy());
       this.sprites = [];
-
       for (let y = 0; y < GRID; y++) {
         for (let x = 0; x < GRID; x++) {
           let t;
@@ -117,13 +116,10 @@ function makeScene(setScore) {
           this.place(x, y, t);
         }
       }
-
       this.findAndClearMatches();
     }
 
-    gridToXY(x, y) {
-      return { px: x * TILE + TILE / 2, py: y * TILE + TILE / 2 };
-    }
+    gridToXY(x, y) { return { px: x * TILE + TILE / 2, py: y * TILE + TILE / 2 }; }
 
     causesMatch(x, y, t) {
       if (x >= 2 && this.board[y][x - 1] === t && this.board[y][x - 2] === t) return true;
@@ -134,15 +130,11 @@ function makeScene(setScore) {
     place(x, y, t) {
       this.board[y][x] = t;
       const { px, py } = this.gridToXY(x, y);
-      const s = this.add.image(px, py, `candy${t}`)
-        .setData({ x, y, t })
-        .setInteractive({ useHandCursor: true });
+      const s = this.add.image(px, py, `candy${t}`).setData({ x, y, t }).setInteractive({ useHandCursor: true });
       this.sprites.push(s);
     }
 
-    spriteAt(x, y) {
-      return this.sprites.find((s) => s.getData('x') === x && s.getData('y') === y);
-    }
+    spriteAt(x, y) { return this.sprites.find(s => s.getData('x') === x && s.getData('y') === y); }
 
     onDown(pointer) {
       if (this.locked) return;
@@ -179,7 +171,6 @@ function makeScene(setScore) {
       const t = this.board[y1][x1];
       this.board[y1][x1] = this.board[y2][x2];
       this.board[y2][x2] = t;
-
       const s1 = this.spriteAt(x1, y1);
       const s2 = this.spriteAt(x2, y2);
       if (s1) s1.setData({ x: x2, y: y2 });
@@ -195,18 +186,12 @@ function makeScene(setScore) {
 
       this.tweens.add({ targets: s1, x: p2.px, y: p2.py, duration: 120 });
       this.tweens.add({
-        targets: s2,
-        x: p1.px,
-        y: p1.py,
-        duration: 120,
-        onComplete: () => {
-          if (good) this.findAndClearMatches();
-          this.locked = false;
-        }
+        targets: s2, x: p1.px, y: p1.py, duration: 120,
+        onComplete: () => { if (good) this.findAndClearMatches(); this.locked = false; }
       });
     }
 
-    hasMatches() { return this.collectMatches().h.length > 0 || this.collectMatches().v.length > 0; }
+    hasMatches() { const m = this.collectMatches(); return m.h.length > 0 || m.v.length > 0; }
 
     collectMatches() {
       const matched = [];
@@ -218,7 +203,6 @@ function makeScene(setScore) {
         }
         if (run >= 3) matched.push({ y, x0: GRID - run, x1: GRID - 1 });
       }
-
       const vmatched = [];
       for (let x = 0; x < GRID; x++) {
         let run = 1;
@@ -228,17 +212,14 @@ function makeScene(setScore) {
         }
         if (run >= 3) vmatched.push({ x, y0: GRID - run, y1: GRID - 1 });
       }
-
       return { h: matched, v: vmatched };
     }
 
     findAndClearMatches() {
       const m = this.collectMatches();
       const toClear = new Set();
-
       m.h.forEach(({ y, x0, x1 }) => { for (let x = x0; x <= x1; x++) toClear.add(`${x},${y}`); });
       m.v.forEach(({ x, y0, y1 }) => { for (let y = y0; y <= y1; y++) toClear.add(`${x},${y}`); });
-
       if (toClear.size === 0) return;
 
       toClear.forEach(key => {
@@ -258,11 +239,7 @@ function makeScene(setScore) {
               if (y !== writeY) {
                 this.board[writeY][x] = this.board[y][x];
                 const s = this.spriteAt(x, y);
-                if (s) {
-                  s.setData('y', writeY);
-                  const { px, py } = this.gridToXY(x, writeY);
-                  this.tweens.add({ targets: s, x: px, y: py, duration: 120 });
-                }
+                if (s) { s.setData('y', writeY); const { px, py } = this.gridToXY(x, writeY); this.tweens.add({ targets: s, x: px, y: py, duration: 120 }); }
               }
               writeY--;
             }
@@ -276,7 +253,6 @@ function makeScene(setScore) {
             this.tweens.add({ targets: s, y: py, duration: 140 });
           }
         }
-
         this.time.delayedCall(140, () => this.findAndClearMatches());
       });
     }
